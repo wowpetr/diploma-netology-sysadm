@@ -1,0 +1,107 @@
+---
+- hosts: elastic
+  become: yes
+  gather_facts: true
+
+  vars:
+    elasticsearch_version: "7.x"
+    elasticsearch_network_host: "{{ groups['elastic'][0] }}" 
+    elasticsearch_http_port: "9200"
+
+    elasticsearch_heap_size_min: 1g
+    elasticsearch_heap_size_max: 1g
+    elasticsearch_extra_options: 'discovery.seed_hosts: ["127.0.0.1"]'
+
+    # Pre-loaded lib to make all trafic go through TOR
+    # when LD_PRELOAD environmental variable is set to the TOR lib:
+    torlib: "/usr/lib/x86_64-linux-gnu/torsocks/libtorsocks.so"
+
+  tasks:
+
+    - name: Update apt cache
+      apt:
+        update_cache: true
+
+    - name: Install TOR to access Elasticsearch repo from Russia
+      apt:
+        name: tor
+        state: present
+
+    - name: Install dependencies
+      apt:
+        name:
+          - apt-transport-https
+          - gnupg2
+        state: present
+
+    - name: Add Elasticsearch apt key
+      apt_key:
+        url: "https://artifacts.elastic.co/GPG-KEY-elasticsearch"
+        state: present
+      environment:
+        LD_PRELOAD: "{{ torlib }}"
+      retries: 3
+      delay: 2
+
+    - name: Add Elasticsearch repository [Debian]
+      apt_repository:
+        repo: 'deb https://artifacts.elastic.co/packages/{{ elasticsearch_version }}/apt stable main'
+        state: present
+        update_cache: true
+      environment:
+        LD_PRELOAD: "{{ torlib }}"
+      retries: 3
+      delay: 2
+
+    - name: Install Elasticsearch
+      package:
+        name: elasticsearch
+        state: present
+      environment:
+        LD_PRELOAD: "{{ torlib }}"
+      retries: 3
+      delay: 2
+
+    - name: Configure Elasticsearch 7+
+      template:
+        src: "{{ item | basename }}.j2"
+        dest: "{{ item }}"
+        owner: root
+        group: elasticsearch
+        mode: 0660
+      with_items:
+        - /etc/elasticsearch/elasticsearch.yml
+        - /etc/elasticsearch/jvm.options.d/heap.options
+      notify: restart elasticsearch
+
+    - name: Force a restart if configuration has changed.
+      meta: flush_handlers
+
+    - name: Start Elasticsearch
+      service:
+        name: elasticsearch
+        state: started
+        enabled: true
+
+    - name: Make sure Elasticsearch is running before proceeding.
+      wait_for:
+        host: "{{ elasticsearch_network_host }}"
+        port: "{{ elasticsearch_http_port }}"
+        delay: 3
+        timeout: 300
+
+    - name: Remove Elasticsearch repository [Debian]
+      apt_repository:
+        repo: 'deb https://artifacts.elastic.co/packages/{{ elasticsearch_version }}/apt stable main'
+        state: absent
+
+    - name: Remove TOR
+      apt:
+        name: tor
+        state: absent
+
+  handlers:
+    - name: restart elasticsearch
+      service:
+        name: elasticsearch
+        state: restarted

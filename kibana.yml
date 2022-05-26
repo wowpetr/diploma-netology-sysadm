@@ -1,0 +1,10 @@
+- hosts: kibana
+  become: yes
+  gather_facts: true
+  roles:
+    - geerlingguy.kibana
+  vars:
+    kibana_version: "7.x"
+    kibana_elasticsearch_url: "http://{{ groups['elastic'][0] }}:9200"
+
+    torlib: "/usr/lib/x86_64-linux-gnu/torsocks/libtorsocks.so"

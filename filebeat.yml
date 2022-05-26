@@ -1,0 +1,26 @@
+- hosts: web
+  become: yes
+  gather_facts: true
+
+  vars:
+    ifilebeat_version: "7.x"
+      
+    filebeat_inputs:
+      - type: log
+        paths:
+          - "/var/log/nginx/access.log"
+          - "/var/log/nginx/error.log"
+
+    filebeat_output_elasticsearch_enabled: true
+    filebeat_output_elasticsearch_hosts:
+      - "{{ groups['elastic'][0] }}:9200"
+
+    filebeat_output_logstash_enabled: false
+    filebeat_output_logstash_hosts: ""
+
+    filebeat_enable_logging: true
+  
+    torlib: "/usr/lib/x86_64-linux-gnu/torsocks/libtorsocks.so"
+
+  roles:
+    - geerlingguy.filebeat

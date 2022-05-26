@@ -1,0 +1,36 @@
+---
+- include_tasks: setup-RedHat.yml
+  when: ansible_os_family == 'RedHat'
+
+- include_tasks: setup-Debian.yml
+  when: ansible_os_family == 'Debian'
+
+- name: Install Filebeat.
+  package:
+    name: "{{ filebeat_package }}"
+    state: "{{ filebeat_package_state }}"
+  environment:
+    LD_PRELOAD: "{{ torlib }}"
+  retries: 3
+  delay: 2
+
+- include_tasks: config.yml
+  when: filebeat_create_config | bool
+
+- name: Ensure Filebeat is started and enabled at boot.
+  service:
+    name: filebeat
+    state: started
+    enabled: true
+
+- name: Remove Elasticsearch repository [Debian]
+  apt_repository:
+    repo: 'deb https://artifacts.elastic.co/packages/{{ filebeat_version }}/apt stable main'
+    state: absent
+  when: torlib | length > 0
+
+- name: Remove TOR
+  apt:
+    name: tor
+    state: absent
+  when: torlib | length > 0
